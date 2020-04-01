@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
 using Cw3.DAL;
 using Cw3.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -9,54 +11,70 @@ namespace Cw3.Controllers
     [Route("api/students")]
     public class StudentsController : ControllerBase
     {
-        private readonly IDBService service;
+        private const string ConString = "Data Source=db-mssql;Initial Catalog=s18776;Integrated Security=True";
+        private readonly IDBService _dbService;
 
-        public StudentsController(IDBService db)
+        public StudentsController(IDBService dbService)
         {
-            service = db;
-        }
-
-        /*[HttpGet]
-        public string GetStudents()
-        {
-            return "ss,gg";
-        }*/
-        
-        [HttpGet("{id:int}")]
-        public IActionResult GetStudents2(int id)
-        {
-            if (id == 1)
-                return Ok("Kowalski");
-            else
-                return Ok("Malewski");
-            return NotFound("Nie znalezniono studenta");
+            _dbService = dbService;
         }
 
         [HttpGet]
-        public IActionResult GetStudents3()
+        public IActionResult GetStudent([FromServices] IDBService dbService)
         {
-            return Ok(service.GetStudents());
+            var list = new List<Student>();
+            using (SqlConnection con = new SqlConnection(ConString))
+            using (SqlCommand com = new SqlCommand())
+            {
+                com.Connection = con;
+                com.CommandText = "select * from Student";
+                con.Open();
+
+                SqlDataReader sqlReader = com.ExecuteReader();
+                while (sqlReader.Read())
+                {
+                    var st = new Student();
+                    st.BirthDate = DateTime.Parse(sqlReader["BirthDate"].ToString());
+                    st.IndexNumber = sqlReader["IndexNumber"].ToString();
+                    st.FirstName = sqlReader["FirstName"].ToString();
+                    st.LastName = sqlReader["LastName"].ToString();
+                    list.Add(st);
+                }
+            }
+            return Ok(list);
         }
 
-        [HttpPost]
-        public IActionResult CreateSudent(Student student)
-        {
-            student.IndexNumber = $"s{new Random().Next(1, 20000)}";
-            return Ok(student);
-        }
-
-        [HttpPut("{id:int}")]
-        public IActionResult UpdateStudent(int id)
+        [HttpGet("{indexNumber}")]
+        public IActionResult getStudyFor(string indexNumber)
         {
 
-            return Ok($"Aktualizacja {id} dokonczona");
-        }
-
-        [HttpDelete("{id:int}")]
-        public IActionResult RemoveStudent(int id)
-        {
-
-            return Ok($"Usuwanie {id} zakonczone");
+            var list = new List<Enrollment>();
+            using (SqlConnection con = new SqlConnection(ConString))
+            using (SqlCommand com = new SqlCommand())
+            {
+                com.Connection = con;
+                com.CommandText = "select Semester,Name,StartDate from Enrollment" +
+                                    " inner join Studies on Enrollment.IdStudy = Studies.IdStudy" +
+                                    " inner join Student on Student.IdEnrollment = Enrollment.IdEnrollment" +
+                                     " where IndexNumber=@studentNumber";
+                com.Parameters.AddWithValue("studentNumber", indexNumber);
+                con.Open();
+                SqlDataReader sqlReader = com.ExecuteReader();
+                while (sqlReader.Read())
+                {
+                    Enrollment enrollment = new Enrollment
+                    {
+                        Semester = int.Parse(sqlReader["Semester"].ToString()),
+                        Study = sqlReader["Name"].ToString(),
+                        StartDate = DateTime.Parse(sqlReader["StartDate"].ToString())
+                    };
+                    list.Add(enrollment);
+                }
+            }
+            if (list.Count() > 0)
+                return Ok(list);
+            else
+                return NotFound("404 No students data was found");
         }
     }
 }
